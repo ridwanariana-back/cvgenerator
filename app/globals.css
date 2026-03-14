@@ -16,6 +16,13 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --blue-primary: #1d4ed8;
+  }
+}
+
+@layer base {
+  :root {
+    color-interpolation-filters: sRGB;
   }
 }
 
