@@ -1,207 +1,227 @@
-import { createClient } from '@/utils/supabase/server';
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import PrintButton from '@/components/PrintButton';
+import { useSearchParams } from 'next/navigation';
+import { Menu, X, ChevronLeft, Download } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
+import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'Present'; // Berubah dari 'Sekarang'
-  return new Date(dateString).toLocaleDateString('en-US', { // Berubah ke en-US
-    year: 'numeric',
-    month: 'long',
-  });
-};
+// --- STYLES UNTUK PDF ---
+const pdfStyles = StyleSheet.create({
+  page: { padding: 40, backgroundColor: '#fff', fontFamily: 'Helvetica' },
+  // Menambahkan paddingBottom pada headerContainer agar garis tidak menempel foto di PDF
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: 1, borderBottomColor: '#000', pb: 10, mb: 10 }, 
+  headerText: { flex: 1 },
+  name: { fontSize: 28, fontWeight: 'bold', textTransform: 'uppercase' },
+  contactInfo: { fontSize: 9, marginTop: 8, color: '#333' },
+  avatar: { width: 60, height: 60, borderRadius: 4, objectFit: 'cover', marginLeft: 15,marginBottom: 15 },
+  sectionHeader: { 
+    fontSize: 10, 
+    fontWeight: 'bold', 
+    backgroundColor: '#eeeeee', 
+    padding: 5, 
+    marginTop: 15, 
+    marginBottom: 10, 
+    textTransform: 'uppercase' 
+  },
+  itemTitle: { fontSize: 11, fontWeight: 'bold', marginTop: 5 },
+  content: { fontSize: 9, color: '#555', lineHeight: 1.4 },
+  contentabout: { fontSize: 11, color: '#333', lineHeight: 1.4 },
+  contentskill: { fontSize: 9, color: '#333',fontWeight: 'bold', lineHeight: 1.4 },
+});
 
-export default async function PreviewCVPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ template?: string }>;
-}) {
-  const supabase = await createClient();
-  const resolvedParams = await searchParams;
-  const selectedTemplate = resolvedParams.template || 'modern';
+// --- KOMPONEN DOKUMEN PDF ---
+const MyPDFDocument = ({ data, user }: any) => (
+  <Document>
+    <Page size="A4" style={pdfStyles.page}>
+      <View style={pdfStyles.headerContainer}>
+        <View style={pdfStyles.headerText}>
+          <Text style={pdfStyles.name}>{data.profile?.full_name}</Text>
+          <Text style={pdfStyles.contactInfo}>
+            {data.profile?.phone}   |   {user?.email}   |   {data.profile?.address}
+          </Text>
+        </View>
+        {data.profile?.avatar_url && (
+          <Image src={data.profile.avatar_url} style={pdfStyles.avatar} />
+        )}
+      </View>
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/');
+      <Text style={pdfStyles.sectionHeader}>About Me</Text>
+        <View style={{ marginBottom: 10 }}>
+          <Text style={pdfStyles.contentabout}>" {data.profile.summary} "</Text>
+        </View>
+      
+      <Text style={pdfStyles.sectionHeader}>Experience</Text>
+      {data.experiences?.map((exp: any) => (
+        <View key={exp.id} style={{ marginBottom: 10 }}>
+          <Text style={pdfStyles.itemTitle}>- {exp.position} - {exp.company}</Text>
+          <Text style={pdfStyles.content}>{exp.description}</Text>
+        </View>
+      ))}
 
-  const [profile, experiences, education, skills] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('experience').select('*').eq('user_id', user.id).order('start_date', { ascending: false }),
-    supabase.from('education').select('*').eq('user_id', user.id).order('start_date', { ascending: false }),
-    supabase.from('skills').select('*').eq('user_id', user.id),
-  ]);
+      <Text style={pdfStyles.sectionHeader}>Skills</Text>
+      <Text style={pdfStyles.contentskill}>
+        {data.skills.map((s: any) => `${s.skill_name} - ${s.level}`).join(', ')}
+      </Text>
 
-  const data = { 
-    profile: profile.data, 
-    experiences: experiences.data || [], 
-    education: education.data || [], 
-    skills: skills.data || [] 
-  };
+      {data.education?.length > 0 && (
+        <>
+          <Text style={pdfStyles.sectionHeader}>Education</Text>
+          {data.education.map((edu: any) => (
+            <View key={edu.id} style={{ marginBottom: 5 }}>
+              <ul>
+              <li>  
+              <Text style={pdfStyles.itemTitle}>- {edu.school}, {edu.degree} - {edu.major}</Text>
+              <Text style={pdfStyles.content}>{edu.start_date} - {edu.end_date}</Text>
+              </li>  
+              </ul>
+            </View>
+          ))}
+        </>
+      )}
+    </Page>
+  </Document>
+);
+
+export default function PreviewCVPage() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  
+  const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
+  const selectedTemplate = searchParams.get('template') || 'modern';
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        setUser(authUser);
+        const [profile, experiences, education, skills] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', authUser.id).single(),
+          supabase.from('experience').select('*').eq('user_id', authUser.id).order('start_date', { ascending: false }),
+          supabase.from('education').select('*').eq('user_id', authUser.id).order('start_date', { ascending: false }),
+          supabase.from('skills').select('*').eq('user_id', authUser.id),
+        ]);
+        setData({ profile: profile.data, experiences: experiences.data || [], education: education.data || [], skills: skills.data || [] });
+      }
+    };
+    fetchData();
+  }, [supabase]);
+
+  if (!data) return <div className="h-screen bg-black flex items-center justify-center text-white font-black uppercase tracking-widest">Loading...</div>;
 
   return (
-    <div className="flex h-screen bg-[#121212] overflow-hidden font-sans">
-      {/* NAVIGATION SIDEBAR */}
-      <aside className="w-80 bg-white border-r border-gray-200 flex flex-col no-print shrink-0 z-10 text-gray-900">
-        <div className="p-6 border-b">
-          <Link href="/dashboard" className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-2 block">← Dashboard</Link>
-          <h2 className="text-xl font-black italic uppercase tracking-tighter">CV Templates</h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
-          {[
-            { id: 'modern', name: 'Modern Professional' },
-            { id: 'minimalist', name: 'Minimalist Clean' }
-          ].map((t) => (
-            <Link 
-              key={t.id} 
-              href={`?template=${t.id}`} 
-              className={`block p-4 rounded-xl border-2 transition-all ${
-                selectedTemplate === t.id ? 'border-blue-600 bg-white shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'
-              }`}
-            >
-              <p className="text-sm font-bold uppercase tracking-widest">{t.name}</p>
+    <div className="flex h-screen bg-[#111] overflow-hidden font-sans">
+      
+      <button onClick={() => setIsSidebarOpen(true)} className="md:hidden fixed top-6 left-6 z-[60] bg-white p-3 rounded-2xl shadow-xl border border-gray-100">
+        <Menu size={20} className="text-black" />
+      </button>
+
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/80 z-[70] md:hidden" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 z-[80] w-72 bg-white transform transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 h-full flex flex-col">
+          <div className="flex justify-between items-center mb-10">
+            <Link href="/dashboard" className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1">
+              <ChevronLeft size={14} /> Dashboard
             </Link>
-          ))}
-        </div>
-        <div className="p-4 border-t bg-white">
-          <PrintButton fullName={data.profile?.full_name || 'user'} template={selectedTemplate} />
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400"><X size={20}/></button>
+          </div>
+          <h2 className="text-xl font-black uppercase italic mb-8 text-gray-900">Templates</h2>
+          <nav className="flex-1 space-y-2">
+            {['modern'].map((t) => (
+              <Link key={t} href={`?template=${t}`} onClick={() => setIsSidebarOpen(false)} className={`block p-4 rounded-xl border-2 transition-all text-[10px] font-black uppercase tracking-widest ${selectedTemplate === t ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-50 text-gray-400 hover:border-gray-200'}`}>
+                {t} Style
+              </Link>
+            ))}
+          </nav>
+          <div className="pt-8 border-t">
+            <PDFDownloadLink
+              document={<MyPDFDocument data={data} user={user} />}
+              fileName={`${data.profile?.full_name || 'CV'}.pdf`}
+              className="w-full bg-black text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-800 shadow-xl transition-all"
+            >
+              {({ loading }) => (loading ? 'PREPARING...' : <><Download size={16}/> DOWNLOAD PDF</>)}
+            </PDFDownloadLink>
+          </div>
         </div>
       </aside>
 
-      {/* PREVIEW AREA */}
-      <main className="flex-1 overflow-y-auto p-12 flex justify-center bg-[#1a1a1a] scrollbar-hide print:p-0 print:bg-white">
-        
-        <div id="cv-content" className="bg-white shadow-[0_0_50px_rgba(0,0,0,0.5)] w-[210mm] min-h-[297mm] shrink-0 box-border print:shadow-none print:m-0 print:w-[210mm]">
-          
-          {/* 1. TEMPLATE: MODERN */}
-          {selectedTemplate === 'modern' && (
-            <div className="p-[20mm] text-gray-900">
-              <header className="flex justify-between items-center border-b-4 border-gray-900 pb-8 mb-10">
-                <div>
-                  <h1 className="text-4xl font-black uppercase tracking-tighter">{data.profile?.full_name}</h1>
-                  <p className="text-[11px] mt-2 text-gray-500 font-bold tracking-tight uppercase">
-                    {data.profile?.phone} • {user.email} • {data.profile?.address}
+      <main className="flex-1 overflow-auto bg-[#0a0a0a] flex justify-center items-start p-6 md:p-12">
+        <div className="py-10 md:py-0">
+          <div className="bg-white shadow-[0_0_60px_rgba(0,0,0,0.6)] w-[210mm] min-h-[297mm] p-[15mm] md:p-[20mm] origin-top transition-all duration-500 scale-[0.38] sm:scale-[0.55] md:scale-[0.8] lg:scale-[0.9] xl:scale-[1.0]">
+            
+            {selectedTemplate === 'modern' ? (
+              <div className="text-gray-900 font-sans">
+                {/* Header dengan Nama dan Gambar. Menambahkan pb-6 agar garis hitam turun sedikit di Preview */}
+                <div className="flex justify-between items-start border-b border-black pb-6 mb-8">
+                  <div className="flex-1">
+                    <h1 className="text-4xl font-bold uppercase tracking-tight mb-2">{data.profile?.full_name}</h1>
+                    <p className="text-[11px] font-medium text-gray-600">
+                      {data.profile?.phone} &nbsp; | &nbsp; {user?.email} &nbsp; | &nbsp; {data.profile?.address}
+                    </p>
+                  </div>
+                  {data.profile?.avatar_url && (
+                    <img src={data.profile.avatar_url} className="w-20 h-20 object-cover rounded-md ml-4" alt="Profile" />
+                  )}
+                </div>
+                
+                <section className="mb-8">
+                  <h2 className="bg-[#eeeeee] px-3 py-1.5 text-[11px] font-bold uppercase mb-4">About Me</h2>
+                  <div className="space-y-6">
+                      <div>
+                        <p className="text-[12px] text-black-600 mt-1 leading-relaxed">" {data.profile.summary} "</p>
+                      </div>
+                  </div>
+                </section>
+
+                <section className="mb-8">
+                  <h2 className="bg-[#eeeeee] px-3 py-1.5 text-[11px] font-bold uppercase mb-4">Experience</h2>
+                  <div className="space-y-6">
+                    {data.experiences.map((exp: any) => (
+                      <div key={exp.id}>
+                        <h3 className="text-sm font-bold">- {exp.position} - {exp.company}</h3>
+                        <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{exp.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="mb-8">
+                  <h2 className="bg-[#eeeeee] px-3 py-1.5 text-[11px] font-bold uppercase mb-4">Skills</h2>
+                  <p className="text-[11px] text-gray-800 font-bold tracking-wide">
+                    {data.skills.map((s: any) => `${s.skill_name} - ${s.level}`).join(', ')}
                   </p>
-                </div>
-                {data.profile?.avatar_url && (
-                  <img src={data.profile.avatar_url} className="w-24 h-24 rounded-lg object-cover border-2 border-gray-900 aspect-square" alt="Profile" />
-                )}
-              </header>
+                </section>
 
-              <section className="mb-10 text-justify">
-                <h2 className="text-xs font-black uppercase tracking-[0.3em] mb-4 bg-gray-100 p-1 px-2 inline-block">About Me</h2>
-                <p className="text-sm leading-relaxed italic font-serif">"{data.profile?.summary}"</p>
-              </section>
-
-              <div className="grid grid-cols-3 gap-12">
-                <div className="col-span-2 space-y-10">
-                  <h2 className="text-xs font-black uppercase tracking-[0.3em] border-b-2 border-gray-900 pb-2">Work Experience</h2>
-                  {data.experiences.map((exp: any) => (
-                    <div key={exp.id} className="relative pl-6 border-l-2 border-gray-100">
-                      <div className="flex justify-between font-bold text-sm uppercase mb-1">
-                        <h3>{exp.position}</h3>
-                        <span className="text-[10px] font-normal text-gray-400">{formatDate(exp.start_date)} - {formatDate(exp.end_date)}</span>
-                      </div>
-                      <p className="text-blue-600 text-[11px] font-black mb-3 tracking-widest uppercase">{exp.company}</p>
-                      <p className="text-xs text-gray-600 leading-relaxed text-justify">{exp.description}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-10">
-                  <div>
-                    <h2 className="text-xs font-black uppercase tracking-[0.3em] border-b-2 border-gray-900 pb-2 mb-4">Skills</h2>
-                    <div className="flex flex-wrap gap-2">
-                      {data.skills.map((s: any) => (
-                        <span key={s.id} className="text-[10px] bg-gray-900 text-white px-2 py-1 font-bold uppercase tracking-tighter">{s.skill_name} - {s.level}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-black uppercase tracking-[0.3em] border-b-2 border-gray-900 pb-2 mb-4">Education</h2>
+                <section className="mb-8">
+                  <h2 className="bg-[#eeeeee] px-3 py-1.5 text-[11px] font-bold uppercase mb-4">Education</h2>
+                  <div className="space-y-6">
                     {data.education.map((edu: any) => (
-                      <div key={edu.id} className="mb-4 text-xs">
-                        <p className="font-bold uppercase leading-tight">{edu.school}</p>
-                        <p className="italic text-gray-400 mt-1 uppercase text-[9px] tracking-tighter">{edu.degree} {edu.major}</p>
-                        <p className="text-gray-400 mt-1 uppercase text-[9px] tracking-tighter">{formatDate(edu.start_date)} - {formatDate(edu.end_date)}</p>
+                      <div key={edu.id}>
+                        <h3 className="text-sm font-bold uppercase">- {edu.school}, {edu.degree} - {edu.major}</h3>
+                        <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{edu.start_date} - {edu.end_date}</p>
                       </div>
                     ))}
                   </div>
+                </section>
+
+              </div>
+            ) : (
+              <div className="text-gray-800 font-serif">
+                <div className="text-center border-b pb-8 mb-8">
+                  <h1 className="text-3xl uppercase tracking-widest">{data.profile?.full_name}</h1>
+                  <p className="text-[10px] italic mt-2">{user?.email}</p>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* 2. TEMPLATE: MINIMALIST */}
-          {selectedTemplate === 'minimalist' && (
-            <div className="p-[25mm] text-gray-900 h-full">
-              <div className="text-center border-b-2 border-gray-100 pb-12 mb-12">
-                <h1 className="text-5xl font-serif mb-4 uppercase tracking-tighter italic">{data.profile?.full_name}</h1>
-                <p className="text-[10px] text-gray-400 uppercase tracking-[0.4em]">
-                  {data.profile?.phone} / {user.email} / {data.profile?.address}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-3 gap-16">
-                <aside className="space-y-12 pr-6 border-r border-gray-50">
-                  <section>
-                    <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-300 mb-6">About Me</h2>
-                    <p className="text-xs text-gray-500 italic leading-relaxed text-justify font-serif">"{data.profile?.summary}"</p>
-                  </section>
-                  <section>
-                    <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-300 mb-6">Education</h2>
-                    {data.education.map((edu: any) => (
-                      <div key={edu.id} className="mb-4">
-                        <p className="text-[11px] font-bold uppercase leading-tight">{edu.school}</p>
-                        <p className="text-[10px] text-gray-400 italic mt-1">{edu.degree} {edu.major}</p>
-                        <p className="text-[10px] text-gray-400 italic mt-1">{formatDate(edu.start_date)} - {formatDate(edu.end_date)}</p>
-                      </div>
-                    ))}
-                  </section>
-                  <section>
-                    <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-300 mb-6">Skills</h2>
-                    <div className="space-y-3">
-                      {data.skills.map((s: any) => (
-                        <div key={s.id} className="flex justify-between text-[10px] uppercase border-b border-gray-50 pb-1 tracking-tight">
-                          <span>{s.skill_name}</span>
-                          <span className="text-gray-300 font-bold">{s.level}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                </aside>
-
-                <main className="col-span-2 space-y-12">
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-300 mb-8">Work Experience</h2>
-                  {data.experiences.map((exp: any) => (
-                    <div key={exp.id} className="mb-10">
-                      <div className="flex justify-between items-baseline mb-2">
-                        <h3 className="text-base font-bold uppercase tracking-tight">{exp.position}</h3>
-                        <span className="text-[9px] text-gray-400 uppercase">{formatDate(exp.start_date)} - {formatDate(exp.end_date)}</span>
-                      </div>
-                      <p className="text-[10px] text-blue-600 font-black mb-3 tracking-widest uppercase">{exp.company}</p>
-                      <p className="text-xs text-gray-500 leading-relaxed text-justify font-serif italic italic">"{exp.description}"</p>
-                    </div>
-                  ))}
-                </main>
-              </div>
-            </div>
-          )}
-
+            )}
+          </div>
         </div>
       </main>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          .no-print, aside, button, nav, .sidebar-nav { display: none !important; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-          html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; background: white !important; }
-          main { display: block !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: white !important; }
-          #cv-content { display: block !important; box-shadow: none !important; width: 210mm !important; min-height: 297mm !important; border: none !important; margin: 0 auto !important; }
-          .grid { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 1.5rem !important; }
-          aside { display: block !important; }
-          ::-webkit-scrollbar { display: none !important; }
-          @page { size: A4; margin: 0; }
-        }
-      `}} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation' // Tambahkan ini
 
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient()
@@ -18,14 +19,17 @@ export async function updateProfile(formData: FormData) {
   }
 
   const { error } = await supabase
-  .from('profiles') // <--- Tentukan nama tabelnya dulu
+  .from('profiles')
   .upsert(updateData)
 
   if (error) throw error
   
-  // Refresh data di halaman dashboard agar muncul data terbaru
   revalidatePath('/dashboard')
+  // Redirect ke halaman yang sama dengan query parameter status=success
+  redirect('/dashboard?status=success')
 }
+
+// ... (fungsi lainnya seperti addExperience, deleteExperience, dll tetap sama) ...
 
 export async function addExperience(formData: FormData) {
   const supabase = await createClient()
@@ -104,23 +108,19 @@ export async function uploadAvatar(formData: FormData) {
 
   if (!user || !file || file.size === 0) return;
 
-  // Nama file unik berdasarkan ID user
   const fileExt = file.name.split('.').pop();
   const filePath = `${user.id}/profile.${fileExt}`;
 
-  // 1. Upload ke Storage
   const { error: uploadError } = await supabase.storage
     .from('avatars')
     .upload(filePath, file, { upsert: true });
 
   if (uploadError) throw uploadError;
 
-  // 2. Ambil URL Public-nya
   const { data: { publicUrl } } = supabase.storage
     .from('avatars')
     .getPublicUrl(filePath);
 
-  // 3. Simpan URL ke tabel profiles
   await supabase
     .from('profiles')
     .update({ avatar_url: publicUrl })
@@ -129,15 +129,12 @@ export async function uploadAvatar(formData: FormData) {
   revalidatePath('/dashboard');
 }
 
-// Tambahkan di dashboard/actions.ts
-
 export async function deleteAvatar() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) return;
 
-  // 1. Ambil data profil untuk mendapatkan path file
   const { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url')
@@ -145,18 +142,15 @@ export async function deleteAvatar() {
     .single();
 
   if (profile?.avatar_url) {
-    // Ambil nama file dari URL (asumsi format standar Supabase Storage)
     const urlParts = profile.avatar_url.split('/');
     const fileName = urlParts[urlParts.length - 1];
     const filePath = `${user.id}/${fileName}`;
 
-    // 2. Hapus file dari Storage
     await supabase.storage
       .from('avatars')
       .remove([filePath]);
   }
 
-  // 3. Set avatar_url menjadi null di database
   const { error } = await supabase
     .from('profiles')
     .update({ avatar_url: null })
@@ -165,4 +159,10 @@ export async function deleteAvatar() {
   if (error) throw error;
 
   revalidatePath('/dashboard');
+}
+
+export async function handleSignOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect('/');
 }
