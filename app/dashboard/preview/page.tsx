@@ -27,6 +27,7 @@ const pdfStyles = StyleSheet.create({
   },
   itemTitle: { fontSize: 11, fontWeight: 'bold', marginTop: 5 },
   content: { fontSize: 9, color: '#555', lineHeight: 1.4 },
+  contentspace: { fontSize: 9, color: '#555', lineHeight: 1.4, marginTop: 5 },
   contentabout: { fontSize: 11, color: '#333', lineHeight: 1.4 },
   contentskill: { fontSize: 9, color: '#333',fontWeight: 'bold', lineHeight: 1.4 },
 });
@@ -56,7 +57,8 @@ const MyPDFDocument = ({ data, user }: any) => (
       {data.experiences?.map((exp: any) => (
         <View key={exp.id} style={{ marginBottom: 10 }}>
           <Text style={pdfStyles.itemTitle}>- {exp.position} - {exp.company}</Text>
-          <Text style={pdfStyles.content}>{exp.description}</Text>
+          <Text style={pdfStyles.contentspace}>{exp.start_date} - {exp.end_date || 'Present'}</Text>
+          <Text style={pdfStyles.contentspace}>{exp.description}</Text>
         </View>
       ))}
 
@@ -73,7 +75,7 @@ const MyPDFDocument = ({ data, user }: any) => (
               <ul>
               <li>  
               <Text style={pdfStyles.itemTitle}>- {edu.school}, {edu.degree} - {edu.major}</Text>
-              <Text style={pdfStyles.content}>{edu.start_date} - {edu.end_date}</Text>
+              <Text style={pdfStyles.contentspace}>{edu.start_date} - {edu.end_date}</Text>
               </li>  
               </ul>
             </View>
@@ -185,6 +187,7 @@ export default function PreviewCVPage() {
                     {data.experiences.map((exp: any) => (
                       <div key={exp.id}>
                         <h3 className="text-sm font-bold">- {exp.position} - {exp.company}</h3>
+                        <p className='text-[11px] text-gray-600 mt-1 leading-relaxed'>{exp.start_date} - {exp.end_date || 'Present'}</p>  
                         <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{exp.description}</p>
                       </div>
                     ))}
